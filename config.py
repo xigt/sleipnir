@@ -1,3 +1,6 @@
 
+# database type
+DATABASE = 'filesystem'
+
 # default config data
-DATABASE_PATH = 'db'
+DATABASE_PATH = 'db/'
