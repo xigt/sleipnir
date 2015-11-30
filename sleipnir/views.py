@@ -1,16 +1,6 @@
 
-from flask import Flask, request, Response, abort
-app = Flask(__name__)
-
-import config
-app.config['DATABASE'] = config.DATABASE
-app.config['DATABASE_PATH'] = config.DATABASE_PATH
-
-if config.DATABASE == 'filesystem':
-    import interfaces.filesystem as dbi
-    dbi.app = app
-else:
-    raise ValueError('Invalid database type: {}'.format(config.DATABASE))
+from flask import request, Response, abort
+from sleipnir import app, dbi
 
 @app.route('/corpora', methods=['GET'])
 def list_corpora():
@@ -69,6 +59,3 @@ def get_arg_list(param, delim=None):
         if delim is not None:
             xlist = [x for xstring in xlist for x in xstring.split(delim)]
     return xlist
-
-if __name__ == '__main__':
-    app.run(debug=True)

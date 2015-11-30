@@ -14,13 +14,14 @@
 #
 
 import os.path
-import json
 import uuid
 
 from xigt import XigtCorpus, xigtpath as xp
 from xigt.codecs import xigtxml, xigtjson
 
-from flask import json, Response
+from flask import json
+
+from sleipnir.errors import SleipnirDbError
 
 app=None
 
@@ -75,13 +76,15 @@ def get_igts(corpus_id, igt_ids=None, matches=None, mimetype=None):
         matcher = lambda i: any(xp.find(i, m) is not None for m in matches)
         igts = list(filter(matcher, igts))
     xc.extend(igts)
-    return json.jsonify(matches=matches, ids=[igt.id for igt in xc])
     return serialize_corpus(xc, mimetype)
 
 def load_index():
-    return json.load(
-        open(os.path.join(app.config['DATABASE_PATH'], 'index.json'))
-    )
+    try:
+        return json.load(
+            open(os.path.join(app.config['DATABASE_PATH'], 'index.json'))
+        )
+    except OSError:
+        raise SleipnirDbError('Database index not found.')
 
 def get_entry(corpus_id, index=None):
     if index is None:
