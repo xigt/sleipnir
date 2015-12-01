@@ -23,7 +23,7 @@ from flask import json
 
 from sleipnir.errors import SleipnirDbError
 
-app=None
+DATABASE_PATH = None
 
 raw_formats = {'application/xml'}
 
@@ -43,7 +43,7 @@ def corpus_summary(corpus_id):
     xc = load_corpus(entry)
     return json.jsonify(
             name=get_name(entry),
-            num_igts=len(xc),
+            igt_count=len(xc),
             igt_ids=[igt.id for igt in xc]
     )
 
@@ -81,7 +81,7 @@ def get_igts(corpus_id, igt_ids=None, matches=None, mimetype=None):
 def load_index():
     try:
         return json.load(
-            open(os.path.join(app.config['DATABASE_PATH'], 'index.json'))
+            open(os.path.join(DATABASE_PATH, 'index.json'))
         )
     except OSError:
         raise SleipnirDbError('Database index not found.')
@@ -93,7 +93,7 @@ def get_entry(corpus_id, index=None):
 
 def corpus_filename(entry):
     if entry and 'path' in entry:
-        return os.path.join(app.config['DATABASE_PATH'], entry['path'])
+        return os.path.join(DATABASE_PATH, entry['path'])
     else:
         return None
 

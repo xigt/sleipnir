@@ -1,21 +1,21 @@
 
 from flask import request, Response, abort
-from sleipnir import app, dbi
+from sleipnir import blueprint, dbi
 
-@app.route('/corpora', methods=['GET'])
+@blueprint.route('/corpora', methods=['GET'])
 def list_corpora():
     return dbi.corpora()
 
-@app.route('/corpora', methods=['POST'])
+@blueprint.route('/corpora', methods=['POST'])
 def add_corpus():
     f = request.files['file']
     return dbi.add_corpus(f)
 
-@app.route('/corpora/<corpus_id>/summary')
+@blueprint.route('/corpora/<corpus_id>/summary')
 def corpus_summary(corpus_id):
     return dbi.corpus_summary(corpus_id)
 
-@app.route('/corpora/<corpus_id>')
+@blueprint.route('/corpora/<corpus_id>')
 def get_corpus(corpus_id):
     mimetype = json_or_xml()
     contents = ''
@@ -25,11 +25,11 @@ def get_corpus(corpus_id):
         contents = dbi.get_corpus(corpus_id, mimetype)
     return Response(contents, mimetype=mimetype)
 
-@app.route('/corpora/<corpus_id>', methods=['PATCH'])
+@blueprint.route('/corpora/<corpus_id>', methods=['PATCH'])
 def update_corpus(corpus_id):
     abort(501)
 
-@app.route('/corpora/<corpus_id>/igts', methods=['GET'])
+@blueprint.route('/corpora/<corpus_id>/igts', methods=['GET'])
 def get_igts(corpus_id):
     igt_ids = get_arg_list('id', delim=',')
     matches = get_arg_list('match')
@@ -37,7 +37,7 @@ def get_igts(corpus_id):
         corpus_id, igt_ids=igt_ids, matches=matches, mimetype=json_or_xml()
     )
 
-@app.route('/corpora/<corpus_id>/igts', methods=['POST'])
+@blueprint.route('/corpora/<corpus_id>/igts', methods=['POST'])
 def add_igts(corpus_id):
     abort(501)
 
