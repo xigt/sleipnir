@@ -6,27 +6,24 @@ various database backends as well as a REST API for web frontends.
 
 ### Actions
 
-- [List corpora](#list-corpora)
-- [Get a corpus summary](#get-a-corpus-summary)
-- [Get a corpus](#get-a-corpus)
-- [List IGTs for a corpus](#list-igts-for-a-corpus)
-- [Get an IGT](#get-an-igt)
-
-
-- [Add a corpus](#add-a-corpus)
-- [Add IGTs to a corpus](#add-igts-to-a-corpus)
-
-
-- [Assign a corpus](#assign-a-corpus)
-- [Assign an IGT](#assign-an-igt)
-
-
-- [Update a corpus](#update-a-corpus)
-- [Update an IGT](#update-an-igt)
-
-
-- [Delete a corpus](#delete-a-corpus)
-- [Delete an IGT](#delete-an-igt)
+* Requesting data
+  - [List corpora](#list-corpora)
+  - [Get a corpus summary](#get-a-corpus-summary)
+  - [Get a corpus](#get-a-corpus)
+  - [List IGTs for a corpus](#list-igts-for-a-corpus)
+  - [Get an IGT](#get-an-igt)
+* Adding new data
+  - [Add corpora](#add-corpora)
+  - [Add IGTs to a corpus](#add-igts-to-a-corpus)
+* Assigning or replacing data 
+  - [Assign or replace a corpus](#assign-or-replace-a-corpus)
+  - [Assign or replace an IGT](#assign-or-replace-an-igt)
+* Partial updates
+  - [Update a corpus](#update-a-corpus)
+  - [Update an IGT](#update-an-igt)
+* Deleting data
+  - [Delete a corpus](#delete-a-corpus)
+  - [Delete an IGT](#delete-an-igt)
 
 #### List corpora
 
@@ -58,7 +55,8 @@ Content-Length: 149
     }
   ],
   "corpus_count": 1
-}```
+}
+```
 
 #### Get a corpus summary
 
@@ -236,7 +234,7 @@ Content-Length: 3832
 
 ```
 
-#### Add a corpus
+#### Add corpora
 
 ###### Python Function
 
@@ -246,7 +244,7 @@ Content-Length: 3832
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+POST /corpora
 ```
 
 ```http
@@ -263,14 +261,14 @@ GET /corpora/<c_id>/igts/<i_id>
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+POST /corpora/<c_id>/igts
 ```
 
 ```http
 
 ```
 
-#### Assign a corpus
+#### Assign or Replace a corpus
 
 ###### Python Function
 
@@ -280,14 +278,14 @@ GET /corpora/<c_id>/igts/<i_id>
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+PUT /corpora/<c_id>
 ```
 
 ```http
 
 ```
 
-#### Assign an IGT
+#### Assign or Replace an IGT
 
 ###### Python Function
 
@@ -297,7 +295,7 @@ GET /corpora/<c_id>/igts/<i_id>
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+PUT /corpora/<c_id>/igts/<i_id>
 ```
 
 ```http
@@ -314,7 +312,7 @@ GET /corpora/<c_id>/igts/<i_id>
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+PATCH /corpora/<c_id>
 ```
 
 ```http
@@ -331,7 +329,7 @@ GET /corpora/<c_id>/igts/<i_id>
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+PATCH /corpora/<c_id>/igts/<i_id>
 ```
 
 ```http
@@ -348,7 +346,7 @@ GET /corpora/<c_id>/igts/<i_id>
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+DELETE /corpora/<c_id>
 ```
 
 ```http
@@ -365,7 +363,7 @@ GET /corpora/<c_id>/igts/<i_id>
 ###### REST URI
 
 ```http
-GET /corpora/<c_id>/igts/<i_id>
+DELETE /corpora/<c_id>/igts/<i_id>
 ```
 
 ```http
