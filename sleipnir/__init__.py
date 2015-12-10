@@ -1,16 +1,20 @@
 
 from flask import Blueprint
 
-blueprint = Blueprint('sleipnir', __name__)
+v1 = Blueprint('sleipnir', __name__)
 
 from sleipnir import config
 # blueprint.config['DATABASE'] = config.DATABASE
 # blueprint.config['DATABASE_PATH'] = config.DATABASE_PATH
 
+dbi = None
 if config.DATABASE == 'filesystem':
-    import sleipnir.interfaces.filesystem as dbi
-    dbi.DATABASE_PATH = config.DATABASE_PATH
+    from sleipnir.interfaces import FileSystemDbi
+    dbi = FileSystemDbi(config.DATABASE_PATH)
 else:
     raise ValueError('Invalid database type: {}'.format(config.DATABASE))
 
-import sleipnir.views  # do this at the end!
+
+# the following imports are circular; do them at the end!
+
+import sleipnir.views
