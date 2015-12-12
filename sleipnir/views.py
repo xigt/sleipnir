@@ -31,7 +31,7 @@ These are the exposed API URIs for Sleipnir
 import tempfile
 import subprocess
 
-from flask import request, Response, abort, json
+from flask import request, Response, abort, json, url_for
 
 from xigt.codecs import xigtxml, xigtjson
 
@@ -48,6 +48,9 @@ accept_mimetypes = ['application/xml', 'application/json']
 @v1.route('/corpora')
 def list_corpora():
     corpora = dbi.list_corpora()
+    for entry in corpora:
+        entry['url'] = url_for('.get_corpus', corpus_id=entry['id'], _external=True)
+        entry['summary_url'] = url_for('.corpus_summary', corpus_id=entry['id'], _external=True)
     return json.jsonify(
         corpus_count=len(corpora),
         corpora=corpora
@@ -85,46 +88,40 @@ def get_igt(corpus_id, igt_id):
 #
 
 @v1.route('/corpora', methods=['POST'])
-def post_corpora():
-    corpora = _get_request_corpora()
-    result = dbi.add_corpora(corpora)
+def post_corpus():
+    print(request.data)
+    xc = _get_request_corpus()
+    name = request.args.get('name')
+    result = dbi.add_corpus(xc, name=name)
     return json.jsonify(**result)
 
 @v1.route('/corpora/<corpus_id>/igts', methods=['POST'])
-def post_igts(corpus_id):
-    igts = []
-    data = request.get_json()
-    if data:
-        igts = [xigtjson.decode_igt(x) for x in data.get('igts', [])]
-    result = dbi.add_igts(corpus_id, igts)
+def post_igt(corpus_id):
+    igt = _get_request_igt()
+    result = dbi.add_igt(corpus_id, igt)
     return json.jsonify(**result)
 
 #
 # PUT REQUESTS
 #
 
-@v1.route('/corpora/<corpus_id>', methods=['PUT'])
-def put_corpus():
-    xcs = _get_request_corpora()
-    if len(xcs) != 1:
-        raise SleipnirError(
-            'Only one corpus may be assigned to an ID', status_code=400
-        )
-    result = dbi.set_corpus(corpus_id, xcs[0])
-    return json.jsonify(**result)
+# Maybe don't allow this one
+# @v1.route('/corpora/<corpus_id>', methods=['PUT'])
+# def put_corpus():
+#     xc = _get_request_corpus()
+#     result = dbi.set_corpus(corpus_id, xc)
+#     if 'created' in result:
+#         created = result['created']
+#         del result['created']
+#     created = result.get('created', False)
+
+#     return '', 204
 
 @v1.route('/corpora/<corpus_id>/igts/<igt_id>', methods=['PUT'])
 def put_igt(corpus_id, igt_id):
-    igt = None
-    data = request.get_json()
-    if data:
-        igt = xigtjson.decode_igt(data)
-    if not igt:  # igt is None or empty {}
-        raise SleipnirError(
-            'Only one IGT may be assigned to an ID', status_code=400
-        )
+    igt = _get_request_igt()
     result = dbi.set_igt(corpus_id, igt_id, igt)
-    return json.jsonify(**result)
+    return '', 204
 
 #
 # DELETE REQUESTS
@@ -132,13 +129,13 @@ def put_igt(corpus_id, igt_id):
 
 @v1.route('/corpora/<corpus_id>', methods=['DELETE'])
 def delete_corpus(corpus_id):
-    result = dbi.del_corpus(corpus_id)
-    return json.jsonify(**result)
+    dbi.del_corpus(corpus_id)
+    return '', 204
 
 @v1.route('/corpora/<corpus_id>/igts/<igt_id>', methods=['DELETE'])
 def delete_igt(corpus_id, igt_id):
-    result = dbi.del_igt(corpus_igt, igt_id)
-    return json.jsonify(**result)
+    dbi.del_igt(corpus_id, igt_id)
+    return '', 204
 
 #
 # PATCH REQUESTS
@@ -184,42 +181,42 @@ def _get_arg_list(param, delim=None):
             xlist = [x for xstring in xlist for x in xstring.split(delim)]
     return xlist
 
+# request can have 1 file attachment, or alternatively the message body
+# can be a XigtXML- or XigtJSON-encoded corpus.
 def _get_request_corpus():
     xc = None
-    if request.mimetype == 'application/json':
-        data = request.get_json()
-        if data and data.get('corpus'):
-            xc = xigtjson.decode(data['corpus'])
-    return xc
-
-def _get_request_corpora():
-    xcs = []
-    for f in request.files['files']:
-        xcs.append(_decode_corpus(f.read(), f.mimetype))
-    if request.mimetype == 'application/json':
-        data = request.get_json()
-        if data:
-            for c in data.get('corpora', []):
-                xcs.append(xigtjson.decode(c))
-    return xcs
-
-def _decode_corpus(data, mimetype):
-    xc = None
-    if mimetype == 'application/json':
-        xc = xigtjson.decode(json.loads(data))
-    elif mimetype == 'application/xml':
-        xc = xigtxml.loads(data)
+    if len(request.files.get('file', [])) == 1:
+        f = request.files['file'][0]
+        data = f.read()
+        mimetype = f.mimetype
+    elif len(request.files.get('file', [])) > 1:
+        raise SleipnirError('Only one file may be uploaded at a time.')
     else:
+        data = request.data
+        if not isinstance(data, str):
+            data = data.decode()
+        mimetype = request.mimetype
+    if mimetype not in accept_mimetypes:
         raise SleipnirError(
-            'Unsupported filetype: %s' % mimetype, status_code=400
+            'Unsupported mimetype: %s' % mimetype, status_code=400
         )
-    _validate_corpus(xc)
+    try:
+        if mimetype == 'application/json':
+            xc = xigtjson.loads(data)
+        elif mimetype == 'application/xml':
+            xc = xigtxml.loads(data)
+    except:  # when Xigt has a parsing exception, use it here
+        raise
+        raise SleipnirError('Unparseable Xigt corpus.')
     return xc
 
-def _validate_corpus(xc):
-    for igt in xc:
-        if igt.id is None:
-            raise SleipnirError('Each IGT must have an ID.', status_code=400)
+def _get_request_igt():
+    data = request.get_json()
+    try:
+        igt = xigtjson.decode_igt(data)
+    except:  # when Xigt has a parsing exception, use it here
+        raise SleipnirError('Unparseable Xigt corpus.')
+    return igt
 
 # def _file_mimetype(f):
 #     mimetype = None
@@ -238,7 +235,5 @@ def _serialize_corpus(xc, mimetype='application/json'):
         return xigtxml.dumps(xc, indent=None)
     elif mimetype == 'application/json':
         return xigtjson.dumps(xc, indent=None)
-    elif mimetype is None:
-        return xc
-    # else: raise exception
-    return None
+    else:
+        raise SleipnirError('Unsupported mimetype: %s' % mimetype)

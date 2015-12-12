@@ -16,4 +16,3 @@ class SleipnirDatabaseInterface(object):
     def set_igt(self, cid, iid, igt, **kwargs): raise NotImplementedError()
     def delete_corpus(self, cid): raise NotImplementedError()
     def delete_igt(self, cid, iid): raise NotImplementedError()
-
