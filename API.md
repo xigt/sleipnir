@@ -52,7 +52,8 @@ Content-Length: 337
     }
   ],
   "corpus_count": 1
-}```
+}
+```
 
 #### Get a corpus summary
 
@@ -60,7 +61,7 @@ Content-Length: 337
 
 ```python
 >>> sleipnir.dbi.corpus_summary('TtWe4dSUSwe4KIMzUvBtLA')
-{'name': 'Yukaghir Corpus', 'igt_count': 7, 'id': 'TtWe4dSUSwe4KIMzUvBtLA', 'igt_ids': ['igt1323-2', 'igt1323-3', 'igt3086-16', 'igt3086-50', 'igt3637-1', 'igt3883-5', 'igt3883-6']}
+{'name': 'Yukaghir Corpus', 'igts': [{'id': 'igt1323-2'}, {'id': 'igt1323-3'}, {'id': 'igt3086-16'}, {'id': 'igt3086-50'}, {'id': 'igt3637-1'}, {'id': 'igt3883-5'}, {'id': 'igt3883-6'}], 'igt_count': 7, 'id': 'TtWe4dSUSwe4KIMzUvBtLA'}
 ```
 
 ###### REST URI
@@ -70,23 +71,22 @@ GET /corpora/<corpus_id>/summary
 ```
 
 ```http
-$ curl -i localhost:5000/v1/corpora/572ba99a-8940-4ae5-8937-8043f8595da1/summary
+$ curl -i localhost:5000/v1/corpora/TtWe4dSUSwe4KIMzUvtLA/summary
 HTTP/1.0 200 OK
 Content-Type: application/json
-Content-Length: 177
+Content-Length: 971
 
 {
+  "id": "TtWe4dSUSwe4KIMzUvBtLA",
   "igt_count": 7,
-  "igt_ids": [
-    "igt1323-2",
-    "igt1323-3",
-    "igt3086-16",
-    "igt3086-50",
-    "igt3637-1",
-    "igt3883-5",
-    "igt3883-6"
+  "igts": [
+    {
+      "id": "igt1323-2",
+      "url": "http://localhost:5000/v1/corpora/TtWe4dSUSwe4KIMzUvBtLA/igts/igt1323-2"
+    },
+    ...
   ],
-  "name": "yux"
+  "name": "Yukaghir Corpus"
 }
 ```
 
@@ -94,8 +94,8 @@ Content-Length: 177
 
 ###### Python Function
 
-If you want to get the corpus as a Python object, `get_corpus()` will
-return it.
+If you want to get the corpus as [XigtCorpus][] object, `get_corpus()`
+will return it.
 
 ```python
 >>> sleipnir.dbi.get_corpus('TtWe4dSUSwe4KIMzUvBtLA')
@@ -125,7 +125,7 @@ sleipnir.errors.SleipnirDbError
 GET /corpora/<corpus_id>
 ```
 
-The response body will be either a [XigtXML] or [XigtJSON] serialized
+The response body will be either a [XigtXML][] or [XigtJSON][] serialized
 corpus, depending on the value of the `ACCEPT` header. Valid values are
 `application/xml` and `application/json`. If unspecified, the default is
 `application/json`.
@@ -159,7 +159,7 @@ Parameters:
 | Name  | Type   | Description                     |
 | ----- | ------ | ------------------------------- |
 | id    | string | Comma-separated list of IGT ids |
-| match | string | An [XPath][] (or [XigtPath]) expression for matching IGTs |
+| match | string | An [XPath][] (or [XigtPath][]) expression for matching IGTs |
 
 ###### Python Function
 

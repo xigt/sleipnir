@@ -112,7 +112,7 @@ class FileSystemDbi(SleipnirDatabaseInterface):
             'id': corpus_id,
             'name': self._get_name(corpus_id),
             'igt_count': len(xc),
-            'igt_ids': [igt.id for igt in xc]
+            'igts': [{'id': igt.id} for igt in xc]
         }
 
     def fetch_raw_corpus(self, corpus_id, mimetype):

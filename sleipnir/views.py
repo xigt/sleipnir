@@ -12,7 +12,7 @@ These are the exposed API URIs for Sleipnir
      /corpora/<corpus_id>/igts/<igt_id>
 
     POST requests
-     !/corpora
+     /corpora
      /corpora/<corpus_id>/igts
 
     PUT requests
@@ -20,8 +20,8 @@ These are the exposed API URIs for Sleipnir
      /corpora/<corpus_id>/igts/<igt_id>
 
     DELETE requests
-     !/corpora/<corpus_id>
-     !/corpora/<corpus_id>/igts/<igt_id>
+     /corpora/<corpus_id>
+     /corpora/<corpus_id>/igts/<igt_id>
 
     PATCH requests
      !/corpora/<corpus_id>
@@ -30,8 +30,9 @@ These are the exposed API URIs for Sleipnir
 
 import tempfile
 import subprocess
+from functools import wraps
 
-from flask import request, Response, abort, json, url_for
+from flask import request, Response, abort, json, url_for, current_app
 
 from xigt.codecs import xigtxml, xigtjson
 
@@ -40,12 +41,32 @@ from sleipnir.errors import SleipnirError
 
 accept_mimetypes = ['application/xml', 'application/json']
 
-
 #
 # GET REQUESTS
 #
 
+# thanks: http://flask.pocoo.org/snippets/79/
+def jsonp(func):
+    """Wraps JSONified output for JSONP requests."""
+    @wraps(func)
+    def decorated_function(*args, **kwargs):
+        callback = request.args.get('callback', False)
+        if callback:
+            if _json_or_xml() != 'application/json':
+                raise SleipnirError('Cannot use JSONP with non-JSON data.')
+            response = func(*args, **kwargs)
+            response.set_data('{}({})'.format(
+                str(callback),
+                response.get_data(as_text=True)
+            ))
+            response.mimetype = 'application/javascript'
+            return response
+        else:
+            return func(*args, **kwargs)
+    return decorated_function
+
 @v1.route('/corpora')
+@jsonp
 def list_corpora():
     corpora = dbi.list_corpora()
     for entry in corpora:
@@ -57,6 +78,7 @@ def list_corpora():
     )
 
 @v1.route('/corpora/<corpus_id>')
+@jsonp
 def get_corpus(corpus_id):
     mimetype = _json_or_xml()
     if mimetype in getattr(dbi, 'raw_formats', []):
@@ -67,10 +89,20 @@ def get_corpus(corpus_id):
     return Response(corpus, mimetype=mimetype)
 
 @v1.route('/corpora/<corpus_id>/summary')
+@jsonp
 def corpus_summary(corpus_id):
-    return json.jsonify(dbi.corpus_summary(corpus_id))
+    summary = dbi.corpus_summary(corpus_id)
+    for igt in summary['igts']:
+        igt['url'] = url_for(
+            '.get_igt',
+            corpus_id=corpus_id,
+            igt_id=igt['id'],
+            _external=True
+        )
+    return json.jsonify(summary)
 
 @v1.route('/corpora/<corpus_id>/igts')
+@jsonp
 def get_igts(corpus_id):
     igt_ids = _get_arg_list('id', delim=',')
     matches = _get_arg_list('match')
@@ -79,6 +111,7 @@ def get_igts(corpus_id):
     return json.jsonify(igts=igts, igt_count=len(igts))
 
 @v1.route('/corpora/<corpus_id>/igts/<igt_id>')
+@jsonp
 def get_igt(corpus_id, igt_id):
     igt = dbi.get_igt(corpus_id, igt_id)
     return json.jsonify(xigtjson.encode_igt(igt))
