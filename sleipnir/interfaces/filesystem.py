@@ -2,9 +2,9 @@
 # Filesystem backend for Sleipnir
 #
 # config['DATABASE_PATH'] should be a directory and it should contain
-# a file `index.json` with the following structure:
+# a file `index.json.gz` with the following structure:
 # {
-#     "files": {
+#     "corpora": {
 #         "ID": {"name": "NAME", "path": "PATH"}
 #     }
 # }
@@ -13,88 +13,72 @@
 # DATABASE_PATH.
 #
 
-import os.path
+import os
+import shutil
+from tempfile import mkdtemp
 from uuid import uuid4
 from base64 import urlsafe_b64encode
+import gzip
 import json
 
-from xigt import XigtCorpus, xigtpath as xp
-from xigt.errors import XigtError
-from xigt.codecs import xigtxml
+from xigt import xigtpath as xp
+from xigt.codecs import xigtjson
 
 from sleipnir.interfaces import SleipnirDatabaseInterface
 from sleipnir.errors import SleipnirDbError
 
 class FileSystemDbi(SleipnirDatabaseInterface):
-    raw_formats = ['application/xml']
+    raw_formats = ['application/json']
 
     def __init__(self, path):
         SleipnirDatabaseInterface.__init__(self, path)
-        self._index_path = os.path.join(self.path, 'index.json')
-        self.index = {'files': []}
-        self._load_index()
+        # if DB doesn't exist; create a bare one
+        if not os.path.isdir(path):
+            os.mkdir(path)
+            _dump_index({'corpora': {}}, path)
+            os.mkdir(os.path.join(path, 'data'))
+        self.index = _load_index(self.path)  # primary index
 
-    def _load_index(self):
-        index = None
-        try:
-            index = json.load(open(self._index_path))
-        except OSError:
-            raise SleipnirDbError('Database index not found.')
-        except json.JSONDecodeError:
-            raise SleipnirDbError('Database index is not a valid JSON file.')
-        if not index or 'files' not in index:
-            raise SleipnirDbError('Database index is malformed.')
-        self.index = index
-
-    def _save_index(self):
-        try:
-            json.dump(self.index, open(self._index_path, 'w'))
-        except OSError:
-            raise SleipnirDbError('Could not write database index.')
-
-    def _update_index_entry(self, corpus_id, xc, name=None, path=None):
-        entry = self._get_index_entry(corpus_id)
-        entry['igt_count'] = len(xc)
-        if name is not None: entry['name'] = name
-        if path is not None: entry['path'] = path
-        self.index['files'][corpus_id] = entry
-        self._save_index()
+    def _update_index_entry(self, corpus_id, name, path, igt_count):
+        entry = {'path': path, 'name': name, 'igt_count': igt_count}
+        self.index['corpora'][corpus_id] = entry
+        _dump_index(self.index, self.path)
 
     def _get_index_entry(self, corpus_id):
-        entry = self.index['files'].get(corpus_id)
+        entry = self.index['corpora'].get(corpus_id)
         if entry is None:
-            raise SleipnirDbError('Corpus entry missing: %s' % corpus_id)
+            raise SleipnirDbError('Index entry missing: %s' % corpus_id)
         return entry
 
-    def _make_new_index_entry(self, name=None):
-        while True:
-            corpus_id = urlsafe_b64encode(uuid4().bytes)[:-2].decode('ascii')
-            if corpus_id not in self.index['files']:
-                break
-        entry = {'path': 'data/%s' % corpus_id}
-        if name is not None:
-            entry['name'] = name
-        self.index['files'][corpus_id] = entry
-        return corpus_id
+    def _corpus_path(self, corpus_id):
+        entry = self._get_index_entry(corpus_id)
+        return os.path.join(self.path, entry['path'])
 
     def _get_name(self, corpus_id):
         return self._get_index_entry(corpus_id).get('name', '(untitled)')
 
-    def _load_corpus(self, corpus_id):
-        return xigtxml.load(self._corpus_filename(corpus_id))
+    def _read_igts(self, corpus_id, ids=None):
+        cpath = self._corpus_path(corpus_id)
+        cindex = _load_index(cpath)
+        igts = cindex['igts']
+        if ids is not None:
+            idxs = map(cindex['igt_index'].__getitem__, ids)
+            igts = [igts[idx] for idx in idxs]
+        return [_jsonload(os.path.join(cpath, igt['path'])) for igt in igts]
 
-    def _save_corpus(self, corpus_id, xc):
-        path = self._corpus_filename(corpus_id)
-        xigtxml.dump(path, xc)
-        self._update_index_entry(corpus_id, xc)
-
-    def _corpus_filename(self, corpus_id):
-        entry = self._get_index_entry(corpus_id)
-        return os.path.join(self.path, entry['path'])
+    def _build_corpus_dict(self, corpus_id):
+        cindex = _load_index(self._corpus_path(corpus_id))
+        xcd = {}
+        if 'namespaces' in cindex: xcd['namespaces'] = cindex['namespaces']
+        if 'namespace' in cindex: xcd['namespace'] = cindex['namespace']
+        if 'attributes' in cindex: xcd['attributes'] = cindex['attributes']
+        if 'metadata' in cindex: xcd['metadata'] = cindex['metadata']
+        xcd['igts'] = self._read_igts(corpus_id)
+        return xcd
 
     def list_corpora(self):
         corpora = []
-        for corpus_id, entry in self.index['files'].items():
+        for corpus_id, entry in self.index['corpora'].items():
             corpus_entry = {
                 'id': corpus_id,
                 'name': self._get_name(corpus_id),
@@ -104,76 +88,67 @@ class FileSystemDbi(SleipnirDatabaseInterface):
         return corpora
 
     def corpus_summary(self, corpus_id):
-        xc = self._load_corpus(corpus_id)
-        return self._generate_corpus_summary(corpus_id, xc)
-
-    def _generate_corpus_summary(self, corpus_id, xc):
+        cindex = _load_index(self._corpus_path(corpus_id))
         return {
             'id': corpus_id,
             'name': self._get_name(corpus_id),
-            'igt_count': len(xc),
-            'igts': [{'id': igt.id} for igt in xc]
+            'igt_count': len(cindex['igts']),
+            'igts': [
+                {'id': igt['id'], 'tier_count': igt.get('tier_count', -1)}
+                for igt in cindex['igts']
+            ]
         }
 
     def fetch_raw_corpus(self, corpus_id, mimetype):
-        if mimetype == 'application/xml':
-            return open(self._corpus_filename(corpus_id)).read()
+        if mimetype == 'application/json':
+            return json.dumps(self._build_corpus_dict(corpus_id), indent=2)
         else:
             raise SleipnirDbError(
                 'Unsupported mimetype for raw corpus: %s' % mimetype
             )
 
     def get_corpus(self, corpus_id):
-        corpus = self._load_corpus(corpus_id)
-        return corpus
+        xc = xigtjson.decode(self._build_corpus_dict(corpus_id))
+        return xc
 
     def get_igts(self, corpus_id, ids=None, matches=None):
-        xc = self._load_corpus(corpus_id)
-        if ids is None:
-            igts = list(xc.igts)
-        else:
-            igts = []
-            for igt_id in ids:
-                igt = xc.get(igt_id)
-                if igt is not None:
-                    igts.append(igt)
+        igts = map(xigtjson.decode_igt, self._read_igts(corpus_id, ids=ids))
         if matches is not None:
             # matches are a disjunction (only one has to match)
             matcher = lambda i: any(xp.find(i, m) is not None for m in matches)
-            igts = list(filter(matcher, igts))
-        return igts
+            igts = filter(matcher, igts)
+        return list(igts)
 
     # get_igt() just uses the default from SleipnirDatabaseInterface
 
     def add_corpus(self, xc, name=None):
         _validate_corpus(xc)
-        corpus_id = self._make_new_index_entry(name=name)
-        self._save_corpus(corpus_id, xc)
-        return {'id': corpus_id, 'igt_count': len(xc)}
+        tmp_cdir, igt_count = _make_corpus_directory(xc)
+
+        # update main index
+        while True:
+            corpus_id = _make_new_id(6)
+            if corpus_id not in self.index['corpora']:
+                break
+        cdir = os.path.join('data', corpus_id)
+        shutil.move(tmp_cdir, os.path.join(self.path, cdir))
+        if name is None:
+            name = corpus_id
+        self._update_index_entry(corpus_id, name, cdir, igt_count)
+
+        return {'id': corpus_id, 'igt_count': igt_count}
 
     def add_igt(self, corpus_id, igt):
         if igt.id is None:
             raise SleipnirDbError(
                 'IGTs must have an ID', status_code=400
             )
-        xc = self._load_corpus(corpus_id)
-        try:
-            xc.append(igt)
-        except XigtError:
-            raise SleipnirDbError(
-                'Igt ID "{}" already exists in corpus {}.'
-                .format(igt.id, corpus_id),
-            )
-        self._save_corpus(corpus_id, xc)
+        _add_igt(igt, self._corpus_path(corpus_id))
         return {'id': igt.id, 'tier_count': len(igt)}
 
     # disable this one
     # def set_corpus(self, corpus_id, xc):
-    #     _validate_corpus(xc)
-    #     created = corpus_id not in self.index['files']
-    #     self._save_corpus(corpus_id, xc)
-    #     return {'id': corpus_id, 'created': created}
-
+    #     raise NotImplementedError()
 
     def set_igt(self, corpus_id, igt_id, igt):
         if igt is None:
@@ -195,39 +170,111 @@ class FileSystemDbi(SleipnirDatabaseInterface):
                 .format(str(igt.id), igt_id),
                 status_code=400
             )
-        xc = self._load_corpus(corpus_id)
-        cur_igt = xc.get(igt_id)
-        if cur_igt is None:  # target doesn't exist; append
+        cdir = self._corpus_path(corpus_id)
+        cindex = _load_index(cdir)
+        igt_entry_idx = cindex['igt_index'].get(igt.id)
+        if igt_entry_idx is None:  # target doesn't exist; just add
+            _add_igt(igt, cdir, cindex=cindex)
             created = True
-            xc.append(igt)
         else:  # target exists; replace
+            igt_entry = cindex['igts'][igt_entry_idx]
+            igt_path = os.path.join(cdir, igt_entry['path'])
+            _jsondump(xigtjson.encode_igt(igt), igt_path)
+            igt_entry['tier_count'] = len(igt)
             created = False
-            idx = xc.index(cur_igt)
-            xc[idx] = igt
-        self._save_corpus(corpus_id, xc)
+        _dump_index(cindex, cdir)
         return {'id': igt_id, 'created': created}
 
     def del_corpus(self, corpus_id):
-        path = self._corpus_filename(corpus_id)
+        path = self._corpus_path(corpus_id)
         try:
-            os.remove(path)
+            shutil.rmtree(path)
         except OSError:
             raise SleipnirDbError('Could not delete corpus: %s' % corpus_id)
-        del self.index['files'][corpus_id]
-        self._save_index()
+        del self.index['corpora'][corpus_id]
+        _dump_index(self.index, self.path)
 
     def del_igt(self, corpus_id, igt_id):
-        xc = self._load_corpus(corpus_id)
+        cdir = self._corpus_path(corpus_id)
+        cindex = _load_index(cdir)
         try:
-            del xc[igt_id]
-        except KeyError:
+            igt_entry_idx = cindex['igt_index'][igt_id]
+            igt_entry = cindex['igts'][igt_entry_idx]
+            path = os.path.join(cdir, igt_entry['path'])
+            os.remove(path)
+            del cindex['igts'][igt_entry_idx]
+            del cindex['igt_index'][igt_id]
+        except (KeyError, IndexError, OSError):
             raise SleipnirDbError(
-                'IGT "{}" not in corpus "{}"'.format(igt_id, corpus_id)
+                'Error removing IGT "{}" in corpus "{}"'
+                .format(igt_id, corpus_id)
             )
-        else:
-            self._save_corpus(corpus_id, xc)
+        _dump_index(cindex, cdir)
 
 def _validate_corpus(xc):
     for igt in xc:
         if igt.id is None:
             raise SleipnirError('Each IGT must have an ID.', status_code=400)
+
+def _jsonload(path, **kwargs):
+    try:
+        return json.load(gzip.open(path, 'rt'), **kwargs)
+    except OSError:
+        raise SleipnirDbError('JSON file not found.')
+    except json.JSONDecodeError:
+        raise SleipnirDbError('File is not valid JSON data.')
+
+def _jsondump(obj, path, **kwargs):
+    if 'indent' not in kwargs: kwargs['indent'] = 2
+    try:
+        return json.dump(obj, gzip.open(path, 'wt'), **kwargs)
+    except OSError:
+        raise SleipnirDbError('Could not write JSON file.')
+
+def _load_index(d): return _jsonload(os.path.join(d, 'index.json.gz'))
+def _dump_index(i, d): return _jsondump(i, os.path.join(d, 'index.json.gz'))
+
+def _make_new_id(size):
+    return urlsafe_b64encode(uuid4().bytes)[:size].decode('ascii')
+
+def _make_corpus_directory(xc):
+    cdir = mkdtemp()
+    # add IGT files
+    igts = list(xc)
+    # corpus index is corpus info w/ mapping to IGT files instead of IGTs
+    xc.clear()
+    cindex = xigtjson.encode(xc)
+    cindex['igt_index'] = {}
+    cindex['igts'] = []
+    for igt in igts:
+        _add_igt(igt, cdir, cindex, False)
+    # refresh igt ID to path mapping once at the end
+    _refresh_igt_index(cindex)
+    _dump_index(cindex, cdir)
+    return cdir, len(igts)
+
+def _add_igt(igt, cdir, cindex=None, refresh=True):
+    if cindex is None:
+        cindex = _load_index(cdir)
+
+    if igt.id in cindex['igt_index']:
+        raise SleipnirDbError(
+            'Igt ID "{}" already exists in corpus.'.format(igt.id),
+        )
+
+    while True:
+        fn = '%s.json.gz' % _make_new_id(4)
+        igtpath = os.path.join(cdir, fn)
+        if not os.path.exists(igtpath):
+            break
+    _jsondump(xigtjson.encode_igt(igt), igtpath)
+    cindex['igts'].append({'id': igt.id, 'tier_count': len(igt), 'path': fn})
+    if refresh:
+        _refresh_igt_index(cindex)
+        _dump_index(cindex, cdir)
+
+def _refresh_igt_index(cindex):
+    igt_index = {}
+    for i, igt in enumerate(cindex['igts']):
+        igt_index[igt['id']] = i
+    cindex['igt_index'] = igt_index

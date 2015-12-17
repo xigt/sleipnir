@@ -218,11 +218,12 @@ def _get_arg_list(param, delim=None):
 # can be a XigtXML- or XigtJSON-encoded corpus.
 def _get_request_corpus():
     xc = None
-    if len(request.files.get('file', [])) == 1:
-        f = request.files['file'][0]
+    files = request.files.getlist('file')
+    if len(files) == 1:
+        f = files[0]
         data = f.read()
         mimetype = f.mimetype
-    elif len(request.files.get('file', [])) > 1:
+    elif len(files) > 1:
         raise SleipnirError('Only one file may be uploaded at a time.')
     else:
         data = request.data
@@ -248,7 +249,7 @@ def _get_request_igt():
     try:
         igt = xigtjson.decode_igt(data)
     except:  # when Xigt has a parsing exception, use it here
-        raise SleipnirError('Unparseable Xigt corpus.')
+        raise SleipnirError('Unparseable Xigt IGT instance.')
     return igt
 
 # def _file_mimetype(f):
@@ -265,8 +266,8 @@ def _get_request_igt():
 
 def _serialize_corpus(xc, mimetype='application/json'):
     if mimetype == 'application/xml':
-        return xigtxml.dumps(xc, indent=None)
+        return xigtxml.dumps(xc, indent=2)
     elif mimetype == 'application/json':
-        return xigtjson.dumps(xc, indent=None)
+        return xigtjson.dumps(xc, indent=2)
     else:
         raise SleipnirError('Unsupported mimetype: %s' % mimetype)
