@@ -39,8 +39,15 @@ class FileSystemDbi(SleipnirDatabaseInterface):
             os.mkdir(os.path.join(path, 'data'))
         self.index = _load_index(self.path)  # primary index
 
-    def _update_index_entry(self, corpus_id, name, path, igt_count):
-        entry = {'path': path, 'name': name, 'igt_count': igt_count}
+    def _update_index_entry(self, corpus_id,
+                            name=None, path=None, igt_count=None):
+        entry = self.index['corpora'].get(
+            corpus_id,
+            {'name': None, 'path': None, 'igt_count': None}
+        )
+        if name is not None: entry['name'] = name
+        if path is not None: entry['path'] = path
+        if igt_count is not None: entry['igt_count'] = igt_count
         self.index['corpora'][corpus_id] = entry
         _dump_index(self.index, self.path)
 
@@ -62,7 +69,14 @@ class FileSystemDbi(SleipnirDatabaseInterface):
         cindex = _load_index(cpath)
         igts = cindex['igts']
         if ids is not None:
-            idxs = map(cindex['igt_index'].__getitem__, ids)
+            igtidx = cindex['igt_index']
+            missing = [_id for _id in ids if _id not in igtidx]
+            if missing:
+                raise SleipnirDbError(
+                    'Requested IGTs not found: {}'.format(', '.join(missing)),
+                    status_code=404
+                )
+            idxs = map(igtidx.__getitem__, ids)
             igts = [igts[idx] for idx in idxs]
         return [_jsonload(os.path.join(cpath, igt['path'])) for igt in igts]
 
@@ -143,7 +157,9 @@ class FileSystemDbi(SleipnirDatabaseInterface):
             raise SleipnirDbError(
                 'IGTs must have an ID', status_code=400
             )
-        _add_igt(igt, self._corpus_path(corpus_id))
+        cindex = _add_igt(igt, self._corpus_path(corpus_id))
+        self._update_index_entry(corpus_id, igt_count=len(cindex['igts']))
+
         return {'id': igt.id, 'tier_count': len(igt)}
 
     # disable this one
@@ -183,6 +199,8 @@ class FileSystemDbi(SleipnirDatabaseInterface):
             igt_entry['tier_count'] = len(igt)
             created = False
         _dump_index(cindex, cdir)
+        self._update_index_entry(corpus_id, igt_count=len(cindex['igts']))
+
         return {'id': igt_id, 'created': created}
 
     def del_corpus(self, corpus_id):
@@ -209,7 +227,9 @@ class FileSystemDbi(SleipnirDatabaseInterface):
                 'Error removing IGT "{}" in corpus "{}"'
                 .format(igt_id, corpus_id)
             )
+        _refresh_igt_index(cindex)
         _dump_index(cindex, cdir)
+        self._update_index_entry(corpus_id, igt_count=len(cindex['igts']))
 
 def _validate_corpus(xc):
     for igt in xc:
@@ -272,6 +292,9 @@ def _add_igt(igt, cdir, cindex=None, refresh=True):
     if refresh:
         _refresh_igt_index(cindex)
         _dump_index(cindex, cdir)
+    # return the updated cindex so the caller can see the effect (in case
+    # it didn't pass in a cindex)
+    return cindex
 
 def _refresh_igt_index(cindex):
     igt_index = {}
