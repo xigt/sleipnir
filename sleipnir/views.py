@@ -28,11 +28,9 @@ These are the exposed API URIs for Sleipnir
      !/corpora/<corpus_id>/igts/<igt_id>
 '''
 
-import tempfile
-import subprocess
 from functools import wraps
 
-from flask import request, Response, abort, json, url_for, current_app
+from flask import request, Response, abort, json, url_for
 
 from xigt.codecs import xigtxml, xigtjson
 

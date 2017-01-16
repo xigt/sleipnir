@@ -25,7 +25,8 @@ from xigt import xigtpath as xp
 from xigt.codecs import xigtjson
 
 from sleipnir.interfaces import SleipnirDatabaseInterface
-from sleipnir.errors import SleipnirDbError
+from sleipnir.errors import SleipnirDbError, SleipnirError
+
 
 class FileSystemDbi(SleipnirDatabaseInterface):
     raw_formats = ['application/json']
