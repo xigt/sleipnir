@@ -21,7 +21,7 @@ from base64 import urlsafe_b64encode
 import gzip
 import json
 
-from xigt import xigtpath as xp
+from xigt import xigtpath as xp, Item, Metadata, Meta
 from xigt.codecs import xigtjson
 
 from sleipnir.interfaces import SleipnirDatabaseInterface
@@ -126,13 +126,32 @@ class FileSystemDbi(SleipnirDatabaseInterface):
         xc = xigtjson.decode(self._build_corpus_dict(corpus_id))
         return xc
 
-    def get_igts(self, corpus_id, ids=None, matches=None):
+    def get_igts(self, corpus_id, ids=None, paths=None):
         igts = map(xigtjson.decode_igt, self._read_igts(corpus_id, ids=ids))
-        if matches is not None:
-            # matches are a disjunction (only one has to match)
-            matcher = lambda i: any(xp.find(i, m) is not None for m in matches)
-            igts = filter(matcher, igts)
-        return list(igts)
+        if paths is not None:
+            # queries are a disjunction (only one has to match)
+            matched_igts = []
+            for igt in igts:
+                matched = False
+                for p in paths:
+                    objs = xp.findall(igt, p)
+                    if objs:
+                        md = Metadata(
+                            type='QueryResult',
+                            attributes={'queryType': 'path', 'query': p}
+                        )
+                        for obj in objs:
+                            if isinstance(obj, Item):
+                                md.append(Meta(attributes={
+                                    'tier': obj.tier.id,
+                                    'item': obj.id
+                                }))
+                        igt.metadata.append(md)
+                        matched = True
+                if matched:
+                    matched_igts.append(igt)
+            igts = matched_igts
+        return igts
 
     # get_igt() just uses the default from SleipnirDatabaseInterface
 

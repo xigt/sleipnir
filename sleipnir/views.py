@@ -103,9 +103,9 @@ def corpus_summary(corpus_id):
 @jsonp
 def get_igts(corpus_id):
     igt_ids = _get_arg_list('id', delim=',')
-    matches = _get_arg_list('match')
+    paths = _get_arg_list('path')
     igts = list(map(xigtjson.encode_igt,
-                    dbi.get_igts(corpus_id, ids=igt_ids, matches=matches)))
+                    dbi.get_igts(corpus_id, ids=igt_ids, paths=paths)))
     return json.jsonify(igts=igts, igt_count=len(igts))
 
 @v1.route('/corpora/<corpus_id>/igts/<igt_id>')
