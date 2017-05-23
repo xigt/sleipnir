@@ -129,10 +129,10 @@ class FileSystemDbi(SleipnirDatabaseInterface):
     def get_igts(self, corpus_id, ids=None, paths=None):
         igts = map(xigtjson.decode_igt, self._read_igts(corpus_id, ids=ids))
         if paths is not None:
-            # queries are a disjunction (only one has to match)
+            # queries are a conjunction (all have to match)
             matched_igts = []
             for igt in igts:
-                matched = False
+                matched = True
                 for p in paths:
                     objs = xp.findall(igt, p)
                     if objs:
@@ -147,7 +147,8 @@ class FileSystemDbi(SleipnirDatabaseInterface):
                                     'item': obj.id
                                 }))
                         igt.metadata.append(md)
-                        matched = True
+                    else:
+                        matched = False
                 if matched:
                     matched_igts.append(igt)
             igts = matched_igts
