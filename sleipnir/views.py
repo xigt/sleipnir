@@ -79,10 +79,11 @@ def list_corpora():
 @jsonp
 def get_corpus(corpus_id):
     mimetype = _json_or_xml()
-    if mimetype in getattr(dbi, 'raw_formats', []):
+    igt_ids = _get_arg_list('id', delim=',')
+    if mimetype in getattr(dbi, 'raw_formats', []) and not igt_ids:
         corpus = dbi.fetch_raw_corpus(corpus_id, mimetype)
     else:
-        xc = dbi.get_corpus(corpus_id)
+        xc = dbi.get_corpus(corpus_id, ids=igt_ids)
         corpus = _serialize_corpus(xc, mimetype)
     return Response(corpus, mimetype=mimetype)
 

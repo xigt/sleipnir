@@ -81,14 +81,14 @@ class FileSystemDbi(SleipnirDatabaseInterface):
             igts = [igts[idx] for idx in idxs]
         return [_jsonload(os.path.join(cpath, igt['path'])) for igt in igts]
 
-    def _build_corpus_dict(self, corpus_id):
+    def _build_corpus_dict(self, corpus_id, ids=None):
         cindex = _load_index(self._corpus_path(corpus_id))
         xcd = {}
         if 'namespaces' in cindex: xcd['namespaces'] = cindex['namespaces']
         if 'namespace' in cindex: xcd['namespace'] = cindex['namespace']
         if 'attributes' in cindex: xcd['attributes'] = cindex['attributes']
         if 'metadata' in cindex: xcd['metadata'] = cindex['metadata']
-        xcd['igts'] = self._read_igts(corpus_id)
+        xcd['igts'] = self._read_igts(corpus_id, ids=ids)
         return xcd
 
     def list_corpora(self):
@@ -122,8 +122,8 @@ class FileSystemDbi(SleipnirDatabaseInterface):
                 'Unsupported mimetype for raw corpus: %s' % mimetype
             )
 
-    def get_corpus(self, corpus_id):
-        xc = xigtjson.decode(self._build_corpus_dict(corpus_id))
+    def get_corpus(self, corpus_id, ids=None):
+        xc = xigtjson.decode(self._build_corpus_dict(corpus_id, ids=ids))
         return xc
 
     def get_igts(self, corpus_id, ids=None, paths=None):
