@@ -37,7 +37,7 @@ from xigt.codecs import xigtxml, xigtjson
 from sleipnir import v1, dbi
 from sleipnir.errors import SleipnirError
 
-accept_mimetypes = ['application/xml', 'application/json']
+accept_mimetypes = ['application/json', 'application/xml']
 
 #
 # GET REQUESTS
@@ -78,13 +78,17 @@ def list_corpora():
 @v1.route('/corpora/<corpus_id>')
 @jsonp
 def get_corpus(corpus_id):
-    mimetype = _json_or_xml()
+    corpus_id, dot, extension = corpus_id.partition('.')  # e.g., id.xml
+    mimetype = _json_or_xml(extension=dot + extension.lower())
+
     igt_ids = _get_arg_list('id', delim=',')
+
     if mimetype in getattr(dbi, 'raw_formats', []) and not igt_ids:
         corpus = dbi.fetch_raw_corpus(corpus_id, mimetype)
     else:
         xc = dbi.get_corpus(corpus_id, ids=igt_ids)
         corpus = _serialize_corpus(xc, mimetype)
+
     return Response(corpus, mimetype=mimetype)
 
 @v1.route('/corpora/<corpus_id>/summary')
@@ -196,14 +200,22 @@ def handle_sleipnirerror(error):
 #
 
 # thanks: http://flask.pocoo.org/snippets/45/
-def _json_or_xml():
-    mimetype = 'application/json'
-    best = request.accept_mimetypes.best_match(accept_mimetypes)
-    if (best == 'application/xml' and
-            request.accept_mimetypes[best] >
-            request.accept_mimetypes['application/json']):
+def _json_or_xml(extension=None):
+    mimetype = None
+
+    if extension == '.xml':
         mimetype = 'application/xml'
-    return mimetype
+    elif extension == '.json':
+        mimetype = 'application/json'
+    elif extension:
+        raise SleipnirError(
+            'Unavailable file format: {}'.format(extension), status_code=406
+        )
+
+    if mimetype is None:
+        mimetype = request.accept_mimetypes.best_match(accept_mimetypes)
+
+    return mimetype or 'application/json'
 
 def _get_arg_list(param, delim=None):
     xlist = None

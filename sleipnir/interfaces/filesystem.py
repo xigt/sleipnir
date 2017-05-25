@@ -127,7 +127,9 @@ class FileSystemDbi(SleipnirDatabaseInterface):
         return xc
 
     def get_igts(self, corpus_id, ids=None, paths=None):
-        igts = map(xigtjson.decode_igt, self._read_igts(corpus_id, ids=ids))
+        igts = list(
+            map(xigtjson.decode_igt, self._read_igts(corpus_id, ids=ids))
+        )
         if paths is not None:
             # queries are a conjunction (all have to match)
             matched_igts = []
