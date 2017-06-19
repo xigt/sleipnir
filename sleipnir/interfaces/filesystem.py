@@ -20,6 +20,7 @@ from uuid import uuid4
 from base64 import urlsafe_b64encode
 import gzip
 import json
+from collections import defaultdict
 
 from xigt import xigtpath as xp, Item, Metadata, Meta
 from xigt.codecs import xigtjson
@@ -44,7 +45,7 @@ class FileSystemDbi(SleipnirDatabaseInterface):
                             name=None, path=None, igt_count=None):
         entry = self.index['corpora'].get(
             corpus_id,
-            {'name': None, 'path': None, 'igt_count': None}
+            {'name': None, 'path': None, 'igt_count': None, 'languages': {}}
         )
         if name is not None: entry['name'] = name
         if path is not None: entry['path'] = path
@@ -104,10 +105,16 @@ class FileSystemDbi(SleipnirDatabaseInterface):
 
     def corpus_summary(self, corpus_id):
         cindex = _load_index(self._corpus_path(corpus_id))
+        languages = defaultdict(lambda: defaultdict(int))
+        for igt in cindex['igts']:
+            lgcode = igt.get('language_code','und')
+            lgname = igt.get('language_name', '???')
+            languages[lgcode][lgname] += 1
         return {
             'id': corpus_id,
             'name': self._get_name(corpus_id),
             'igt_count': len(cindex['igts']),
+            'languages': languages,
             'igts': [
                 {'id': igt['id'], 'tier_count': igt.get('tier_count', -1)}
                 for igt in cindex['igts']
@@ -311,13 +318,25 @@ def _add_igt(igt, cdir, cindex=None, refresh=True):
         if not os.path.exists(igtpath):
             break
     _jsondump(xigtjson.encode_igt(igt), igtpath)
-    cindex['igts'].append({'id': igt.id, 'tier_count': len(igt), 'path': fn})
+    lgcode, lgname = _igt_lang_info(igt)
+    cindex['igts'].append({
+        'id': igt.id,
+        'tier_count': len(igt),
+        'language_code': lgcode,
+        'language_name': lgname,
+        'path': fn
+    })
     if refresh:
         _refresh_igt_index(cindex)
         _dump_index(cindex, cdir)
     # return the updated cindex so the caller can see the effect (in case
     # it didn't pass in a cindex)
     return cindex
+
+def _igt_lang_info(igt):
+    code = xp.find(igt, 'metadata//dc:subject/@olac:code').replace(':', '-')
+    name = xp.find(igt, 'metadata//dc:subject/text()')
+    return (code.lower(), name or '')
 
 def _refresh_igt_index(cindex):
     igt_index = {}
