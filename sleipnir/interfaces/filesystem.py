@@ -44,8 +44,7 @@ class FileSystemDbi(SleipnirDatabaseInterface):
     def _update_index_entry(self, corpus_id,
                             name=None, path=None, igt_count=None):
         entry = self.index['corpora'].get(
-            corpus_id,
-            {'name': None, 'path': None, 'igt_count': None, 'languages': {}}
+            corpus_id, {'name': None, 'path': None, 'igt_count': None}
         )
         if name is not None: entry['name'] = name
         if path is not None: entry['path'] = path
